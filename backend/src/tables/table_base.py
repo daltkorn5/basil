@@ -64,14 +64,14 @@ class TableBase():
 
     @classmethod
     def insert(cls, posted_data):
-        """Add a *single* new record to the database"""
+        """Add new records to the database"""
         session = Session()
 
         try:
-            new_data = cls(**posted_data)
-            session.add(new_data)
+            new_data = [cls(**data) for data in posted_data]
+            session.add_all(new_data)
             session.commit()
-            ret_value = cls.schema().dump(new_data).data
+            ret_value = cls.schema(many = True).dump(new_data).data
         except IntegrityError:
             session.rollback()
             ret_value = {"ERROR": "record already exists"}

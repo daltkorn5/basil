@@ -40,7 +40,7 @@ class Transaction(TableBase, Base):
         """
         Check to see if we already have a mapping for the newly added transaction's description
         """
-        xref = session.query(DescriptionCategoryXref).get(desc)
+        xref = DescriptionCategoryXref.get((desc,))
         if xref is not None:
             return xref.category_id
 

@@ -1,7 +1,7 @@
 # coding=utf-8
 
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func
+from sqlalchemy import func, Date
 from sqlalchemy.sql import label
 from src.tables.table_base import Session
 from src.tables.transactions import Transaction, TransactionSchema
@@ -19,6 +19,7 @@ def get_transactions():
 def add_transaction():
 
     posted_transaction = TransactionSchema(
+        many = True,
         only = ('transaction_date', 'amount', 'description', 'created_by', 'category_id'),
         partial = False # We want transactions to be added even if cateogory_id isn't specified
     ).load(request.get_json())
@@ -58,11 +59,11 @@ def aggregate_transactions():
     session = Session()
 
     aggregation = session.query(
-        label('month', func.extract('month', Transaction.transaction_date)),
+        label('month', func.cast(func.date_trunc('month', Transaction.transaction_date), Date)),
         label('category', Category.name),
         label('sum', func.text(func.sum(Transaction.amount))) # has to be text because Decimal isn't json serializable :(
     ).join(Category).group_by(
-        func.extract('month', Transaction.transaction_date),
+        func.cast(func.date_trunc('month', Transaction.transaction_date), Date),
         Category.name
     ).all()
 
