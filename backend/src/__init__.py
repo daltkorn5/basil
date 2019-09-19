@@ -36,6 +36,9 @@ def create_app():
     from .routes.categories import category_blueprint
     app.register_blueprint(category_blueprint)
 
+    from .routes.description_category_xref import xref_blueprint
+    app.register_blueprint(xref_blueprint)
+
     try:
         os.makedirs(app.instance_path)
     except OSError:

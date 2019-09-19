@@ -51,6 +51,7 @@ class TableBase():
         """Get the unique record specified by the filter_params dict"""
         session = Session()
         result = session.query(cls).filter_by(**filter_params).one()
+        result = cls.schema().dump(result).data
         session.close()
         return result
 
@@ -59,6 +60,7 @@ class TableBase():
         """Get all records as specified by the filter_params dict"""
         session = Session()
         result = session.query(cls).filter_by(**filter_params).all()
+        result = cls.schema(many = True).dump(result).data
         session.close()
         return result
 

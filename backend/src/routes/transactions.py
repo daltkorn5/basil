@@ -1,7 +1,8 @@
 # coding=utf-8
 
+import datetime, calendar
 from flask import Blueprint, jsonify, request
-from sqlalchemy import func, Date
+from sqlalchemy import func, Date, case
 from sqlalchemy.sql import label
 from src.tables.table_base import Session
 from src.tables.transactions import Transaction, TransactionSchema
@@ -28,49 +29,43 @@ def add_transaction():
 
     return jsonify(transaction), 201
 
-@transaction_blueprint.route('/set_category/<category_id>', methods = ['POST'])
-def set_category(category_id):
-
-    category = Category.get(category_id)
-    if category is None:
-        return jsonify({"ERROR": f"cateogory_id {category_id} does not exist"}), 201
-
-    posted_transaction = TransactionSchema(only = ("transaction_id",)).load(request.get_json())
-
-    id = posted_transaction.data['transaction_id']
-
-    transaction = Transaction.get(id)
-    if transaction is None:
-        return jsonify({"ERROR": f"transaction_id {transaction_id} does not exist"}), 201
-
-    update_xref(transaction.description, category_id)
-
-    # maybe we want to check to see if only one row needs to be updated? This could be inefficient
-    num_updates = Transaction.update(
-        filter_params = {'description': transaction.description},
-        update_params = {'category_id': category_id}
-    )
-
-    return jsonify({"SUCCESS": f"{num_updates} transactions updated"}), 201
-
 @transaction_blueprint.route('/aggregate')
 def aggregate_transactions():
 
     session = Session()
 
-    aggregation = session.query(
-        label('month', func.cast(func.date_trunc('month', Transaction.transaction_date), Date)),
-        label('category', Category.name),
-        label('sum', func.text(func.sum(Transaction.amount))) # has to be text because Decimal isn't json serializable :(
-    ).join(Category).group_by(
-        func.cast(func.date_trunc('month', Transaction.transaction_date), Date),
-        Category.name
-    ).all()
+    aggregation = session.query(*get_select()).join(Category, isouter = True).group_by(*get_group_by()).all()
 
     aggregation = [row._asdict() for row in aggregation]
 
     session.close()
     return jsonify(aggregation), 201
+
+@transaction_blueprint.route('/aggregate/<month>')
+def aggregate_transactions_for_month(month):
+
+    first_of_month, last_of_month = get_month_boundaries(month)
+
+    session = Session()
+
+    aggregation = session.query(*get_select()).join(Category, isouter = True).filter(
+        Transaction.transaction_date >= first_of_month,
+        Transaction.transaction_date <= last_of_month
+    ).group_by(*get_group_by()).all()
+
+    aggregation = [row._asdict() for row in aggregation]
+
+    session.close()
+    return jsonify(aggregation), 201
+
+def get_month_boundaries(month_str):
+
+    d = datetime.datetime.strptime(month_str, "%Y-%m-%d").date()
+    month_range = calendar.monthrange(d.year, d.month)
+    first_day = d.replace(day = 1)
+    last_day = d.replace(day = month_range[1])
+
+    return first_day, last_day
 
 def update_xref(description, category_id):
     """
@@ -89,3 +84,24 @@ def update_xref(description, category_id):
             filter_params = {'description': description},
             update_params = {'category_id': category_id}
         )
+
+def get_select():
+    return (
+        label('month', func.cast(func.date_trunc('month', Transaction.transaction_date), Date)),
+        label('category', get_case_statement()),
+        label('sum', func.text(func.sum(Transaction.amount))) # has to be text because Decimal isn't json serializable :(
+    )
+
+def get_case_statement():
+    return case(
+        [
+            (Category.name == None, 'None'),
+        ],
+        else_ = Category.name
+    )
+
+def get_group_by():
+    return (
+        func.cast(func.date_trunc('month', Transaction.transaction_date), Date),
+        Category.name
+    )
